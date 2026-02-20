@@ -1,0 +1,15 @@
+{
+  "name": "cip100-sign",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "CIP-100 body hash signer using Cardano BIP32-Ed25519 keys",
+  "main": "sign.mjs",
+  "scripts": {
+    "sign": "node sign.mjs"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.8.1",
+    "@noble/hashes": "^1.7.1",
+    "bech32": "^2.0.0"
+  }
+}
