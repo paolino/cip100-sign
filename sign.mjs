@@ -25,7 +25,7 @@ async function readStdin() {
   return new Promise((resolve) => {
     let data = '';
     const rl = createInterface({ input: process.stdin, terminal: false });
-    rl.on('line', (line) => { data += line.trim(); });
+    rl.on('line', (line) => { data += ' ' + line.trim(); });
     rl.on('close', () => resolve(data.trim()));
   });
 }
