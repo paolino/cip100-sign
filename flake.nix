@@ -21,13 +21,17 @@
           installPhase = ''
             mkdir -p $out/lib/node_modules/cip100-sign $out/bin
             cp -r node_modules $out/lib/node_modules/cip100-sign/
-            cp sign.mjs $out/lib/node_modules/cip100-sign/
+            cp sign.mjs lib.mjs test.mjs $out/lib/node_modules/cip100-sign/
             cp package.json $out/lib/node_modules/cip100-sign/
-            cat > $out/bin/cip100-sign <<WRAPPER
+            cat > $out/bin/cip100-sign <<'WRAPPER'
             #!/bin/sh
-            exec ${pkgs.nodejs_20}/bin/node $out/lib/node_modules/cip100-sign/sign.mjs "\$@"
+            exec ${pkgs.nodejs_20}/bin/node "$(dirname "$(readlink -f "$0")")/../lib/node_modules/cip100-sign/sign.mjs" "$@"
             WRAPPER
             chmod +x $out/bin/cip100-sign
+          '';
+          doCheck = true;
+          checkPhase = ''
+            ${pkgs.nodejs_20}/bin/node test.mjs
           '';
         };
       });
@@ -37,6 +41,10 @@
           type = "app";
           program = "${self.packages.${pkgs.system}.default}/bin/cip100-sign";
         };
+      });
+
+      checks = forEachSystem (pkgs: {
+        default = self.packages.${pkgs.system}.default;
       });
     };
 }
