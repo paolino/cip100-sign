@@ -130,6 +130,87 @@ assert(bytesToHex(ourPub) === CS_PUBKEY, 'Cross-check: pubkey matches cardano-si
 assert(bytesToHex(ourSig) === CS_SIG, 'Cross-check: signature matches cardano-signer');
 assert(verify(hexToBytes(CS_SIG), csHash, hexToBytes(CS_PUBKEY)), 'Cross-check: cardano-signer sig verifies');
 
+// --- Golden test: JSON-LD canonicalization + blake2b-256 body hash ---
+// Verifies that our canonicalization pipeline produces the expected N-Quads
+// and body hash for a known CIP-100 document.
+
+const { blake2b } = await import('@noble/hashes/blake2b');
+const jsonld = (await import('jsonld')).default;
+
+const GOLDEN_DOC = {
+  "@context": {
+    "@language": "en",
+    "CIP100": "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0100/README.md",
+    "CIP108": "https://github.com/cardano-foundation/CIPs/blob/master/CIP-0108/README.md",
+    "hashAlgorithm": "CIP100:hashAlgorithm",
+    "body": {
+      "@id": "CIP108:body",
+      "@context": {
+        "references": {
+          "@id": "CIP108:references",
+          "@container": "@set",
+          "@context": {
+            "GovernanceMetadata": "CIP100:GovernanceMetadataReference",
+            "Other": "CIP100:OtherReference",
+            "label": "CIP100:reference-label",
+            "uri": "CIP100:reference-uri",
+            "referenceHash": {
+              "@id": "CIP108:referenceHash",
+              "@context": {
+                "hashDigest": "CIP108:hashDigest",
+                "hashAlgorithm": "CIP100:hashAlgorithm"
+              }
+            }
+          }
+        },
+        "title": "CIP108:title",
+        "abstract": "CIP108:abstract",
+        "motivation": "CIP108:motivation",
+        "rationale": "CIP108:rationale"
+      }
+    },
+    "authors": {
+      "@id": "CIP100:authors",
+      "@container": "@set",
+      "@context": {
+        "name": "http://xmlns.com/foaf/0.1/name",
+        "witness": {
+          "@id": "CIP100:witness",
+          "@context": {
+            "witnessAlgorithm": "CIP100:witnessAlgorithm",
+            "publicKey": "CIP100:publicKey",
+            "signature": "CIP100:signature"
+          }
+        }
+      }
+    }
+  },
+  "body": {
+    "title": "Test Proposal",
+    "abstract": "A test proposal for golden value verification.",
+    "motivation": "Testing canonicalization.",
+    "rationale": "Ensures deterministic output.",
+    "references": []
+  }
+};
+
+const GOLDEN_NQUADS =
+  '_:c14n0 <CIP108:body> _:c14n1 .\n' +
+  '_:c14n1 <CIP108:abstract> "A test proposal for golden value verification."@en .\n' +
+  '_:c14n1 <CIP108:motivation> "Testing canonicalization."@en .\n' +
+  '_:c14n1 <CIP108:rationale> "Ensures deterministic output."@en .\n' +
+  '_:c14n1 <CIP108:title> "Test Proposal"@en .\n';
+
+const GOLDEN_BODY_HASH = '440b4834b8f3c253dba1abb3c661be1335a01e72ee67be60a8c26ea5432ec33c';
+
+const reduced = { "@context": GOLDEN_DOC["@context"], body: GOLDEN_DOC.body };
+const nquads = await jsonld.canonize(reduced, { algorithm: 'URDNA2015', format: 'application/n-quads' });
+
+assert(nquads === GOLDEN_NQUADS, 'Canonicalization produces expected N-Quads');
+
+const bodyHash = bytesToHex(blake2b(new TextEncoder().encode(nquads), { dkLen: 32 }));
+assert(bodyHash === GOLDEN_BODY_HASH, `Body hash: ${bodyHash}`);
+
 // Summary
 process.stderr.write(`\n${failures === 0 ? 'All tests passed' : failures + ' test(s) failed'}\n`);
 process.exit(failures === 0 ? 0 : 1);
