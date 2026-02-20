@@ -90,16 +90,61 @@ async function main() {
     }
 
     const entropy = mnemonicToEntropy(mnemonic, wordlist);
-    // Icarus derivation: PBKDF2-HMAC-SHA512(password="", salt=entropy, iterations=4096)
-    const raw = pbkdf2(sha512, new Uint8Array(0), entropy, { c: 4096, dkLen: 96 });
+    const mnemonicBytes = new TextEncoder().encode(mnemonic);
 
-    // Clamp kL
-    raw[0] &= 0xf8;
-    raw[31] &= 0x7f;
-    raw[31] |= 0x40;
+    // Try both Icarus variants
+    function clampAndCopy(buf) {
+      const r = new Uint8Array(buf);
+      r[0] &= 0xf8;
+      r[31] &= 0x7f;
+      r[31] |= 0x40;
+      return r;
+    }
 
-    xsk = raw;
+    const variants = [
+      { label: 'Icarus', raw: clampAndCopy(pbkdf2(sha512, new Uint8Array(0), entropy, { c: 4096, dkLen: 96 })) },
+      { label: 'Icarus-V2', raw: clampAndCopy(pbkdf2(sha512, mnemonicBytes, new Uint8Array(0), { c: 4096, dkLen: 96 })) },
+    ];
+
     process.stderr.write(`Key format: mnemonic (${words.length} words)\n`);
+    process.stderr.write(`Trying ${variants.length} derivation variants × 10 accounts...\n\n`);
+
+    let found = false;
+    for (const { label, raw } of variants) {
+      for (let acct = 0; acct < 10; acct++) {
+        const acctXsk = deriveCip1852(raw, [1852, 1815, acct, 2, 0]);
+        const acctPub = publicKeyFromScalar(acctXsk.slice(0, 32));
+        const acctHash = bytesToHex(keyHash(acctPub));
+        if (acctHash === TREASURY_KEY_HASH) {
+          process.stderr.write(`  MATCH: ${label}, account ${acct}, m/1852'/1815'/${acct}'/2/0\n`);
+          process.stderr.write(`  stake key hash: ${acctHash}\n`);
+          xsk = raw;
+          // Override derivation paths to use this account
+          DERIVATION_PATHS.length = 0;
+          DERIVATION_PATHS.push(
+            { path: [1852, 1815, acct, 2, 0], label: `m/1852'/1815'/${acct}'/2/0 (stake key)` },
+          );
+          found = true;
+          break;
+        }
+      }
+      if (found) break;
+    }
+
+    if (!found) {
+      // Print diagnostics for account 0 of each variant
+      process.stderr.write('No match found. Diagnostics (account 0, stake key):\n');
+      for (const { label, raw: r } of variants) {
+        const child = deriveCip1852(r, [1852, 1815, 0, 2, 0]);
+        const pub = publicKeyFromScalar(child.slice(0, 32));
+        process.stderr.write(`  ${label}: ${bytesToHex(keyHash(pub))}\n`);
+        // Also show account-level xpub for cross-check
+        const acctChild = deriveCip1852(r, [1852, 1815, 0]);
+        const acctPub = publicKeyFromScalar(acctChild.slice(0, 32));
+        process.stderr.write(`  ${label} acct xpub: ${bytesToHex(acctPub)}...${bytesToHex(acctChild.slice(64))}\n`);
+      }
+      xsk = variants[0].raw; // fallback, will fail at match check below
+    }
   } else {
     const cleaned = keyStr.replace(/[\s\r\n]+/g, '');
     process.stderr.write(`Input length: ${cleaned.length} chars\n`);
