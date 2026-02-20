@@ -109,6 +109,27 @@ assert(bytesToHex(stakePub) === GOLDEN_STAKE_PUB, `Golden public key: ${bytesToH
 assert(bytesToHex(hash) === GOLDEN_KEY_HASH, `Golden key hash: ${bytesToHex(hash)}`);
 assert(bytesToHex(sig) === GOLDEN_SIG, `Golden signature: ${bytesToHex(sig)}`);
 
+// --- Cross-validation with cardano-signer 1.34.0 ---
+// These values were produced by cardano-signer with the same extended key.
+
+// Extended key: kL = 6432be..., kR = 00..00 (test key)
+const csKL = hexToBytes('6432be5b587ab78abe263367672b599fda4b9c55b78c07e976441f2b6bf6a62a');
+const csKR = new Uint8Array(32);
+const csCC = new Uint8Array(32);
+const csXsk = concat(csKL, csKR, csCC);
+const csHash = hexToBytes('deadbeefcafebabe00112233445566778899aabbccddeeff0011223344556677');
+
+// cardano-signer output for this extended key + hash
+const CS_PUBKEY = '59d5344abe4c02b790621c1367f178f0c5948b503764e93135c7dc4b6a2f6624';
+const CS_SIG = '695eb83585cc35ed1582a6bb82e79394f50adef5b1bf7bac8b921bfab7a269cfd0c8a676bdc23c60013affb469be8793ff5736d93cb89c5d7165023db3959906';
+
+const ourPub = publicKeyFromScalar(csKL);
+const ourSig = signExtended(csHash, csXsk);
+
+assert(bytesToHex(ourPub) === CS_PUBKEY, 'Cross-check: pubkey matches cardano-signer');
+assert(bytesToHex(ourSig) === CS_SIG, 'Cross-check: signature matches cardano-signer');
+assert(verify(hexToBytes(CS_SIG), csHash, hexToBytes(CS_PUBKEY)), 'Cross-check: cardano-signer sig verifies');
+
 // Summary
 process.stderr.write(`\n${failures === 0 ? 'All tests passed' : failures + ' test(s) failed'}\n`);
 process.exit(failures === 0 ? 0 : 1);
