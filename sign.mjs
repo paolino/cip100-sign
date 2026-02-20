@@ -70,15 +70,16 @@ async function main() {
     process.exit(1);
   }
 
-  const keyStr = extractXprv(input);
+  const keyStr = extractXprv(input).replace(/[\s\r\n]+/g, '');
+  process.stderr.write(`Input length: ${keyStr.length} chars\n`);
   let xsk;
   if (/^[0-9a-fA-F]+$/.test(keyStr)) {
     xsk = hexToBytes(keyStr);
-    process.stderr.write('Key format: hex\n');
+    process.stderr.write(`Key format: hex (${xsk.length} bytes)\n`);
   } else {
     const { bytes } = decodeBech32(keyStr);
     xsk = bytes;
-    process.stderr.write('Key format: bech32\n');
+    process.stderr.write(`Key format: bech32 (${bytes.length} bytes)\n`);
   }
 
   if (xsk.length === 64) {
@@ -86,6 +87,9 @@ async function main() {
     const padded = new Uint8Array(96);
     padded.set(xsk);
     xsk = padded;
+  } else if (xsk.length > 96) {
+    process.stderr.write(`Got ${xsk.length} bytes, using first 96 (kL||kR||cc).\n`);
+    xsk = xsk.slice(0, 96);
   }
 
   if (xsk.length !== 96) {
