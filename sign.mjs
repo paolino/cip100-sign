@@ -96,7 +96,7 @@ async function main() {
     function clampAndCopy(buf) {
       const r = new Uint8Array(buf);
       r[0] &= 0xf8;
-      r[31] &= 0x7f;
+      r[31] &= 0x1f;
       r[31] |= 0x40;
       return r;
     }
@@ -114,7 +114,7 @@ async function main() {
     const bip39seed = pbkdf2(sha512, mnemonicBytes, new TextEncoder().encode('mnemonic'), { c: 2048, dkLen: 64 });
     const h = hmac(sha512, new TextEncoder().encode('ed25519 cardano seed'), bip39seed);
     const bkL = new Uint8Array(h.slice(0, 32));
-    bkL[0] &= 0xf8; bkL[31] &= 0x7f; bkL[31] |= 0x40;
+    bkL[0] &= 0xf8; bkL[31] &= 0x1f; bkL[31] |= 0x40;
     const bkR = new Uint8Array(h.slice(32, 64));
     const { concat } = await import('./lib.mjs');
     const bcc = hmac(sha512, new TextEncoder().encode('ed25519 cardano chaincode'), bip39seed).slice(0, 32);

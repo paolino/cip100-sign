@@ -26,7 +26,7 @@ function rootKeyFromSeed(seed) {
   const kL = new Uint8Array(h.slice(0, 32));
   // Clamp
   kL[0] &= 0xf8;
-  kL[31] &= 0x7f;
+  kL[31] &= 0x1f;
   kL[31] |= 0x40;
   const kR = new Uint8Array(h.slice(32, 64));
   // Chain code from second HMAC
@@ -101,9 +101,9 @@ const sig2 = signExtended(testMessage, stakeXsk);
 assert(bytesToHex(sig) === bytesToHex(sig2), 'Signing is deterministic');
 
 // 11. Golden values (pinned from first successful run)
-const GOLDEN_STAKE_PUB = 'c2d1a890f357e990ebac59ffe583eb415eb979963dd7207526c5a6ddf6a72e2d';
-const GOLDEN_KEY_HASH = 'e4aade41feb2d4aff5515c68b47af9382850206a26e938468e8fe6e2';
-const GOLDEN_SIG = '0d980a13f85db2aff0b332c9af050680e66302c6451944371966ffcaf59a0e7c92a1870304f06bdd0fa4192e3ac251723157b7216f3089bc5e49325a7a083a0e';
+const GOLDEN_STAKE_PUB = '1ac89c2e2402fe83b7f7b0c4f230c16ef2ca8a50a502b7275e5b131c76bb00e3';
+const GOLDEN_KEY_HASH = '7a7b0af6db7d1930c44db17133fcfe962614c51f8f48b5aef4b8b482';
+const GOLDEN_SIG = '1430afe873e54eb039df0dc4642b66158254c0b311c3eb9016d4aac7d4f9380c5213e7e26cc965690b1fa69d6614051725ac3e47e0ab9d5f5161fa5af2dbdd08';
 
 assert(bytesToHex(stakePub) === GOLDEN_STAKE_PUB, `Golden public key: ${bytesToHex(stakePub)}`);
 assert(bytesToHex(hash) === GOLDEN_KEY_HASH, `Golden key hash: ${bytesToHex(hash)}`);
