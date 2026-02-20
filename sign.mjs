@@ -70,30 +70,62 @@ async function main() {
     process.exit(1);
   }
 
-  const keyStr = extractXprv(input).replace(/[\s\r\n]+/g, '');
-  process.stderr.write(`Input length: ${keyStr.length} chars\n`);
-  let xsk;
-  if (/^[0-9a-fA-F]+$/.test(keyStr)) {
-    xsk = hexToBytes(keyStr);
-    process.stderr.write(`Key format: hex (${xsk.length} bytes)\n`);
-  } else {
-    const { bytes } = decodeBech32(keyStr);
-    xsk = bytes;
-    process.stderr.write(`Key format: bech32 (${bytes.length} bytes)\n`);
-  }
+  const keyStr = extractXprv(input);
 
-  if (xsk.length === 64) {
-    process.stderr.write('Got 64 bytes (kL||kR), padding with 32-byte zero chain code.\n');
-    const padded = new Uint8Array(96);
-    padded.set(xsk);
-    xsk = padded;
-  } else if (xsk.length > 96) {
-    process.stderr.write(`Got ${xsk.length} bytes, using first 96 (kL||kR||cc).\n`);
-    xsk = xsk.slice(0, 96);
+  // Detect mnemonic (words separated by spaces)
+  const words = keyStr.trim().split(/\s+/);
+  let xsk;
+
+  if (words.length >= 12 && words.length <= 24 && words.every(w => /^[a-z]+$/.test(w))) {
+    // Mnemonic phrase — derive root key via Icarus PBKDF2
+    const { mnemonicToEntropy, validateMnemonic } = await import('@scure/bip39');
+    const { wordlist } = await import('@scure/bip39/wordlists/english');
+    const { pbkdf2 } = await import('@noble/hashes/pbkdf2');
+    const { sha512 } = await import('@noble/hashes/sha512');
+
+    const mnemonic = words.join(' ');
+    if (!validateMnemonic(mnemonic, wordlist)) {
+      process.stderr.write('Error: invalid mnemonic (checksum failed).\n');
+      process.exit(1);
+    }
+
+    const entropy = mnemonicToEntropy(mnemonic, wordlist);
+    // Icarus derivation: PBKDF2-HMAC-SHA512(password="", salt=entropy, iterations=4096)
+    const raw = pbkdf2(sha512, new Uint8Array(0), entropy, { c: 4096, dkLen: 96 });
+
+    // Clamp kL
+    raw[0] &= 0xf8;
+    raw[31] &= 0x7f;
+    raw[31] |= 0x40;
+
+    xsk = raw;
+    process.stderr.write(`Key format: mnemonic (${words.length} words)\n`);
+  } else {
+    const cleaned = keyStr.replace(/[\s\r\n]+/g, '');
+    process.stderr.write(`Input length: ${cleaned.length} chars\n`);
+
+    if (/^[0-9a-fA-F]+$/.test(cleaned)) {
+      xsk = hexToBytes(cleaned);
+      process.stderr.write(`Key format: hex (${xsk.length} bytes)\n`);
+    } else {
+      const { bytes } = decodeBech32(cleaned);
+      xsk = bytes;
+      process.stderr.write(`Key format: bech32 (${bytes.length} bytes)\n`);
+    }
+
+    if (xsk.length === 64) {
+      process.stderr.write('Got 64 bytes (kL||kR), padding with 32-byte zero chain code.\n');
+      const padded = new Uint8Array(96);
+      padded.set(xsk);
+      xsk = padded;
+    } else if (xsk.length > 96) {
+      process.stderr.write(`Got ${xsk.length} bytes, using first 96 (kL||kR||cc).\n`);
+      xsk = xsk.slice(0, 96);
+    }
   }
 
   if (xsk.length !== 96) {
-    process.stderr.write(`Error: expected 96 bytes (or 64) for xprv, got ${xsk.length}\n`);
+    process.stderr.write(`Error: expected 96 bytes for xprv, got ${xsk.length}\n`);
     process.exit(1);
   }
 
