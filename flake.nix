@@ -16,7 +16,7 @@
           pname = "cip100-sign";
           version = "0.1.0";
           src = ./.;
-          npmDepsHash = "sha256-39Q1Q4AoBKj3TiTr5vS9WM+Lc2oxTFDCFeUPHLbrHhI=";
+          npmDepsHash = "sha256-3nrXDv6Toki7Az+qpNJ8PxIv7rWj+8xIQ0F2Bewzt7k=";
           dontNpmBuild = true;
           installPhase = ''
             mkdir -p $out/lib/node_modules/cip100-sign $out/bin

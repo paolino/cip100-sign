@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 // CIP-100 body hash signer for Cardano
-// Reads xprv (bech32) from stdin, derives the signing key, signs the body hash.
+// Reads xprv (bech32) from stdin, derives the signing key, signs the body hash,
+// and patches the proposal JSON (passed as argument) with the new author entry.
 // Private key never touches disk.
 
+import { readFileSync } from 'fs';
 import { createInterface } from 'readline';
 import {
   decodeBech32, deriveCip1852, publicKeyFromScalar, keyHash,
   signExtended, verify, bytesToHex, hexToBytes,
 } from './lib.mjs';
 
-const BODY_HASH = '775ec0cac4003d3479ecafcf94771321026e6b5b777762dd9f94d416848ffdc3';
 const TREASURY_KEY_HASH = '8bd03209d227956aaf9670751e0aa2057b51c1537a43f155b24fb1c1';
 const AUTHOR_NAME = 'paolino';
 
@@ -40,6 +41,27 @@ function extractXprv(input) {
 }
 
 async function main() {
+  const proposalPath = process.argv[2];
+  if (!proposalPath) {
+    process.stderr.write('Usage: cip100-sign <proposal.json>\n');
+    process.stderr.write('  Reads xprv from stdin, signs the body hash, outputs patched JSON to stdout.\n');
+    process.exit(1);
+  }
+
+  const proposal = JSON.parse(readFileSync(proposalPath, 'utf-8'));
+
+  if (proposal.hashAlgorithm !== 'blake2b-256') {
+    process.stderr.write(`Error: unsupported hashAlgorithm "${proposal.hashAlgorithm}"\n`);
+    process.exit(1);
+  }
+
+  // Compute the body hash from the proposal
+  const { blake2b } = await import('@noble/hashes/blake2b');
+  const jsonld = (await import('jsonld')).default;
+  const reduced = { "@context": proposal["@context"], body: proposal.body };
+  const nquads = await jsonld.canonize(reduced, { algorithm: 'URDNA2015', format: 'application/n-quads' });
+  const BODY_HASH = bytesToHex(blake2b(new TextEncoder().encode(nquads), { dkLen: 32 }));
+
   process.stderr.write('Reading key from stdin...\n');
   const input = await readStdin();
 
@@ -57,7 +79,7 @@ async function main() {
   }
 
   process.stderr.write(`Target treasury key hash: ${TREASURY_KEY_HASH}\n`);
-  process.stderr.write(`Body hash to sign: ${BODY_HASH}\n\n`);
+  process.stderr.write(`Body hash: ${BODY_HASH}\n\n`);
 
   let matchedXsk = null;
   let matchedPub = null;
@@ -101,6 +123,7 @@ async function main() {
     process.exit(1);
   }
 
+  // Patch the proposal with the new author
   const authorEntry = {
     name: AUTHOR_NAME,
     witness: {
@@ -110,7 +133,8 @@ async function main() {
     }
   };
 
-  process.stdout.write(JSON.stringify(authorEntry, null, 2) + '\n');
+  proposal.authors = [...(proposal.authors || []), authorEntry];
+  process.stdout.write(JSON.stringify(proposal, null, 2) + '\n');
 
   matchedXsk.fill(0);
   xsk.fill(0);
