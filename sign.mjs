@@ -66,15 +66,30 @@ async function main() {
   const input = await readStdin();
 
   if (!input) {
-    process.stderr.write('Error: no input received. Pipe your xprv bech32 or Eternl JSON export.\n');
+    process.stderr.write('Error: no input received. Pipe your xprv (hex, bech32, or Eternl JSON).\n');
     process.exit(1);
   }
 
-  const xprvBech32 = extractXprv(input);
-  const { bytes: xsk } = decodeBech32(xprvBech32);
+  const keyStr = extractXprv(input);
+  let xsk;
+  if (/^[0-9a-fA-F]+$/.test(keyStr)) {
+    xsk = hexToBytes(keyStr);
+    process.stderr.write('Key format: hex\n');
+  } else {
+    const { bytes } = decodeBech32(keyStr);
+    xsk = bytes;
+    process.stderr.write('Key format: bech32\n');
+  }
+
+  if (xsk.length === 64) {
+    process.stderr.write('Got 64 bytes (kL||kR), padding with 32-byte zero chain code.\n');
+    const padded = new Uint8Array(96);
+    padded.set(xsk);
+    xsk = padded;
+  }
 
   if (xsk.length !== 96) {
-    process.stderr.write(`Error: expected 96 bytes for xprv, got ${xsk.length}\n`);
+    process.stderr.write(`Error: expected 96 bytes (or 64) for xprv, got ${xsk.length}\n`);
     process.exit(1);
   }
 
