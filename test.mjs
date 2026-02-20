@@ -211,6 +211,47 @@ assert(nquads === GOLDEN_NQUADS, 'Canonicalization produces expected N-Quads');
 const bodyHash = bytesToHex(blake2b(new TextEncoder().encode(nquads), { dkLen: 32 }));
 assert(bodyHash === GOLDEN_BODY_HASH, `Body hash: ${bodyHash}`);
 
+// --- Golden test: N-Quads rendering with rich content ---
+// Exercises: newlines, markdown tables, $dollar signs, "quotes", \\backslashes,
+// \ttabs, unicode (₳ — é è ê), Japanese (カルダノ), IPFS URIs, multiple references.
+
+const RICH_DOC_BODY = {
+  "title": "Treasury Withdrawal \u2014 Q1 2026",
+  "abstract": "This proposal requests **\u20b310,142,000** for the Amaru project.\nIt covers 12 months of development across 4 scopes.",
+  "motivation": "#### Budget Breakdown\n\n| Scope | FTEs | Fixed |\n| :--- | ---: | ---: |\n| Core Development | 3.5 | $500k |\n| Operations | 2 | $130k |\n\n> **NOTE**: The $225k yearly rate includes contractor overhead.\n\nSee [details](ipfs://bafybeidrfx7yxy54xg7crp2n4s2uxflmxaafebf5py4xi2ze75nya3sp5a) for the full breakdown.",
+  "rationale": "Line 1\nLine 2\n\nParagraph with \"quotes\" and a backslash: \\\\ and a tab:\tand unicode: \u00e9\u00e8\u00ea",
+  "references": [
+    {
+      "@type": "Other",
+      "label": "Budget Breakdown",
+      "uri": "ipfs://bafybeidrfx7yxy54xg7crp2n4s2uxflmxaafebf5py4xi2ze75nya3sp5a"
+    },
+    {
+      "@language": "ja",
+      "@type": "Other",
+      "label": "\u30ab\u30eb\u30c0\u30ce\u30d6\u30ed\u30c3\u30af\u30c1\u30a7\u30fc\u30f3",
+      "uri": "ipfs://bafybeifwrhggaa7miqr6s7lqvtphjnzhpcvagxfjn5bjipme3pzamvikiy"
+    }
+  ]
+};
+
+const RICH_BODY_HASH = '2133111962935897a321dc3030d6bb9fc75ba83926635ade90129fda1a31a9bb';
+
+const richReduced = { "@context": GOLDEN_DOC["@context"], body: RICH_DOC_BODY };
+const richNquads = await jsonld.canonize(richReduced, { algorithm: 'URDNA2015', format: 'application/n-quads' });
+const richHash = bytesToHex(blake2b(new TextEncoder().encode(richNquads), { dkLen: 32 }));
+
+assert(richNquads.length === 1281, `Rich N-Quads length: ${richNquads.length}`);
+assert(richNquads.includes('$500k'), 'N-Quads preserves dollar signs');
+assert(richNquads.includes('\u20b310,142,000'), 'N-Quads preserves ₳ symbol');
+assert(richNquads.includes('\u2014'), 'N-Quads preserves em-dash');
+assert(richNquads.includes('\u00e9\u00e8\u00ea'), 'N-Quads preserves accented chars');
+assert(richNquads.includes('\u30ab\u30eb\u30c0\u30ce'), 'N-Quads preserves Japanese');
+assert(richNquads.includes('\\n'), 'N-Quads escapes newlines');
+assert(richNquads.includes('\\"quotes\\"'), 'N-Quads escapes quotes');
+assert(richNquads.includes('\\\\'), 'N-Quads escapes backslashes');
+assert(richHash === RICH_BODY_HASH, `Rich body hash: ${richHash}`);
+
 // Summary
 process.stderr.write(`\n${failures === 0 ? 'All tests passed' : failures + ' test(s) failed'}\n`);
 process.exit(failures === 0 ? 0 : 1);
