@@ -101,10 +101,24 @@ async function main() {
       return r;
     }
 
+    const { hmac } = await import('@noble/hashes/hmac');
+
     const variants = [
       { label: 'Icarus', raw: clampAndCopy(pbkdf2(sha512, new Uint8Array(0), entropy, { c: 4096, dkLen: 96 })) },
       { label: 'Icarus-V2', raw: clampAndCopy(pbkdf2(sha512, mnemonicBytes, new Uint8Array(0), { c: 4096, dkLen: 96 })) },
+      { label: 'pw=entropy', raw: clampAndCopy(pbkdf2(sha512, entropy, new Uint8Array(0), { c: 4096, dkLen: 96 })) },
+      { label: 'salt=mnemonic', raw: clampAndCopy(pbkdf2(sha512, new Uint8Array(0), mnemonicBytes, { c: 4096, dkLen: 96 })) },
     ];
+
+    // BIP39 seed approach (Ledger-style)
+    const bip39seed = pbkdf2(sha512, mnemonicBytes, new TextEncoder().encode('mnemonic'), { c: 2048, dkLen: 64 });
+    const h = hmac(sha512, new TextEncoder().encode('ed25519 cardano seed'), bip39seed);
+    const bkL = new Uint8Array(h.slice(0, 32));
+    bkL[0] &= 0xf8; bkL[31] &= 0x7f; bkL[31] |= 0x40;
+    const bkR = new Uint8Array(h.slice(32, 64));
+    const { concat } = await import('./lib.mjs');
+    const bcc = hmac(sha512, new TextEncoder().encode('ed25519 cardano chaincode'), bip39seed).slice(0, 32);
+    variants.push({ label: 'BIP39+HMAC', raw: concat(bkL, bkR, new Uint8Array(bcc)) });
 
     process.stderr.write(`Key format: mnemonic (${words.length} words)\n`);
     process.stderr.write(`Trying ${variants.length} derivation variants × 10 accounts...\n\n`);
@@ -132,17 +146,18 @@ async function main() {
     }
 
     if (!found) {
-      // Print diagnostics for account 0 of each variant
-      process.stderr.write('No match found. Diagnostics (account 0, stake key):\n');
+      process.stderr.write('No match found. Cross-check your xpub against these:\n\n');
       for (const { label, raw: r } of variants) {
-        const child = deriveCip1852(r, [1852, 1815, 0, 2, 0]);
-        const pub = publicKeyFromScalar(child.slice(0, 32));
-        process.stderr.write(`  ${label}: ${bytesToHex(keyHash(pub))}\n`);
-        // Also show account-level xpub for cross-check
-        const acctChild = deriveCip1852(r, [1852, 1815, 0]);
-        const acctPub = publicKeyFromScalar(acctChild.slice(0, 32));
-        process.stderr.write(`  ${label} acct xpub: ${bytesToHex(acctPub)}...${bytesToHex(acctChild.slice(64))}\n`);
+        const rootPub = bytesToHex(publicKeyFromScalar(r.slice(0, 32)));
+        process.stderr.write(`  ${label}:\n`);
+        process.stderr.write(`    root pub: ${rootPub}\n`);
+        for (let a = 0; a < 3; a++) {
+          const acctChild = deriveCip1852(r, [1852, 1815, a]);
+          const acctPub = bytesToHex(publicKeyFromScalar(acctChild.slice(0, 32)));
+          process.stderr.write(`    acct ${a} pub: ${acctPub}\n`);
+        }
       }
+      process.stderr.write('\n');
       xsk = variants[0].raw; // fallback, will fail at match check below
     }
   } else {
